@@ -1,0 +1,17 @@
+# terraform.tfvarsのテンプレート
+# 実際の値を設定後、terraform.tfvarsとしてコピーして利用してください
+# このファイルはGitHubにコミットしないでください
+
+# LINE APIの設定（機密情報）
+line_channel_access_token = "YOUR_LINE_CHANNEL_ACCESS_TOKEN"
+line_user_id              = "YOUR_LINE_USER_ID"
+
+# セール条件の設定
+sale_percentage = 20  # 20%以上の割引があれば通知
+sale_price      = 500 # 500円以下の場合に通知
+
+# AWSリージョン
+aws_region = "ap-northeast-1"
+
+# 環境設定
+environment = "development"  # development, staging, production など

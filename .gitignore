@@ -1,0 +1,74 @@
+test.sh
+
+# Node.js関連
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# ビルド関連
+build/
+build_scraper/
+dist/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.zip
+
+# Lambda関連
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+ENV/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+lambda_function.zip
+lambda_layer.zip
+lambda_scraper_function.zip
+lambda_common_layer.zip
+
+# Terraformの状態ファイル
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+terraform.tfvars  # 機密情報を含むため除外
+terraform/*.tfvars  # terraform/ディレクトリ内のすべての.tfvarsファイル（機密情報）
+terraform/terraform.tfvars
+terraform.tfvars.json
+.terraformrc
+terraform.rc
+
+# プランファイル
+tfplan_*
+
+# エディタ関連
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS関連
+.DS_Store
+Thumbs.db
