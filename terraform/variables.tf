@@ -41,9 +41,9 @@ variable "dynamodb_table_name" {
 }
 
 variable "lambda_function_name" {
-  description = "items用Lambda関数名"
+  description = "Kindle Items API用Lambda関数名"
   type        = string
-  default     = "kindle_sale_checker_api"
+  default     = "kindle_items_api"  # kindle_sale_checker_api から kindle_items_api に変更
 }
 
 variable "api_name" {

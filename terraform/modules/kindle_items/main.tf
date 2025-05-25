@@ -1,4 +1,4 @@
-# Lambdaモジュール（レイヤー対応版）
+# Lambdaモジュール（kindle_items対応版）
 variable "function_name" {
   description = "Lambda関数名"
   type        = string
@@ -29,12 +29,12 @@ variable "layer_arn" {
   type        = string
 }
 
-# Lambda関数
-resource "aws_lambda_function" "api" {
+# Lambda関数（Kindle Items API用）
+resource "aws_lambda_function" "kindle_items" {
   function_name = var.function_name
   role          = var.lambda_role_arn
-  handler       = "main.handler"
-  runtime       = "python3.13"  # Python 3.13に更新
+  handler       = "kindle_items.handler"  # main.handler から kindle_items.handler に変更
+  runtime       = "python3.13"
   timeout       = 30
   
   # デプロイパッケージのパス
@@ -50,21 +50,24 @@ resource "aws_lambda_function" "api" {
     }
   }
 
+  description = "Kindle Items API - アイテムの登録・取得・削除を行うAPI"
+
   tags = {
     Environment = var.environment
     Project     = var.project_name
+    Function    = "kindle_items_api"
   }
 }
 
 # 出力
 output "lambda_function_name" {
-  value = aws_lambda_function.api.function_name
+  value = aws_lambda_function.kindle_items.function_name
 }
 
 output "lambda_invoke_arn" {
-  value = aws_lambda_function.api.invoke_arn
+  value = aws_lambda_function.kindle_items.invoke_arn
 }
 
 output "lambda_arn" {
-  value = aws_lambda_function.api.arn
+  value = aws_lambda_function.kindle_items.arn
 }

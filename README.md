@@ -27,8 +27,8 @@ graph TB
     APIGateway[🌐 API Gateway<br/>RESTful API<br/>JWT Authorizer]
     
     %% アプリケーション層
-    LambdaAPI[⚡ Lambda Function<br/>API Handler<br/>Python FastAPI]
-    LambdaScraper[🕷️ Lambda Function<br/>Kindle Scraper<br/>Python BeautifulSoup]
+    KindleItemsAPI[📦 Kindle Items API<br/>kindle_items.py<br/>アイテムCRUD操作]
+    KindleScraper[🕷️ Kindle Scraper<br/>kindle_scraper.py<br/>価格監視・通知]
     
     %% データ層
     DynamoDB[🗄️ DynamoDB<br/>書籍データ・価格履歴]
@@ -39,7 +39,7 @@ graph TB
     Amazon[🛒 Amazon Kindle Store<br/>価格データ取得]
     
     %% 共通層
-    LambdaLayer[📦 Lambda Layer<br/>共通ライブラリ<br/>BeautifulSoup・requests・boto3]
+    LambdaLayer[📦 Lambda Common Layer<br/>共通ライブラリ<br/>BeautifulSoup・requests・boto3・line-bot-sdk]
     
     %% 接続関係
     User --> CloudFront
@@ -48,25 +48,27 @@ graph TB
     User -.->|認証| Cognito
     User --> APIGateway
     APIGateway -.->|JWT検証| Cognito
-    APIGateway --> LambdaAPI
-    LambdaAPI --> DynamoDB
+    APIGateway --> KindleItemsAPI
+    KindleItemsAPI --> DynamoDB
     
-    EventBridge --> LambdaScraper
-    LambdaScraper --> DynamoDB
-    LambdaScraper --> Amazon
-    LambdaScraper -.->|セール通知| LINE
+    EventBridge --> KindleScraper
+    KindleScraper --> DynamoDB
+    KindleScraper --> Amazon
+    KindleScraper -.->|セール通知| LINE
     
-    LambdaAPI -.-> LambdaLayer
-    LambdaScraper -.-> LambdaLayer
+    KindleItemsAPI -.-> LambdaLayer
+    KindleScraper -.-> LambdaLayer
     
     %% スタイル設定
     classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:white
     classDef cognito fill:#DD344C,stroke:#232F3E,stroke-width:2px,color:white
     classDef external fill:#4CAF50,stroke:#2E7D32,stroke-width:2px,color:white
     classDef user fill:#2196F3,stroke:#1565C0,stroke-width:2px,color:white
+    classDef lambda fill:#FF6B35,stroke:#232F3E,stroke-width:2px,color:white
     
-    class CloudFront,S3,APIGateway,LambdaAPI,LambdaScraper,DynamoDB,EventBridge,LambdaLayer aws
+    class CloudFront,S3,APIGateway,DynamoDB,EventBridge,LambdaLayer aws
     class Cognito cognito
+    class KindleItemsAPI,KindleScraper lambda
     class LINE,Amazon external
     class User,Admin user
 ```
@@ -75,7 +77,9 @@ graph TB
 
 - **フロントエンド**: React (CloudFront + S3でホスティング)
 - **認証**: AWS Cognito (JWT認証・長期セッション)
-- **バックエンド**: AWS Lambda (Python)
+- **バックエンド**: AWS Lambda (Python 3.13)
+  - **Kindle Items API**: アイテムのCRUD操作
+  - **Kindle Scraper**: 価格監視・スクレイピング・通知
 - **データベース**: DynamoDB
 - **インフラ**: Terraform（モジュール化）
 - **スクレイパー**: 自己スケジューリング型Lambdaによるスクレイピング
@@ -90,17 +94,22 @@ graph TB
 - **長期セッション**: 3650日有効なリフレッシュトークン
 - **初回パスワード設定**: 管理者作成後の初回ログイン時にパスワード設定
 
-### 📚 **書籍管理**
+### 📚 **書籍管理（Kindle Items API）**
 - **Kindleの本の登録/削除**: AmazonのURLを登録するだけで簡単に監視可能
+- **アイテム一覧表示**: 登録済みの本の価格・セール状況を表示
+- **CRUD操作**: 認証されたユーザーのみが操作可能
+
+### 🕷️ **価格監視（Kindle Scraper）**
 - **自動価格監視**: 定期的な価格チェックによりセール情報を自動検出
 - **重複通知防止**: 同じ本は1週間以内に再通知されないよう制御
 - **例外的な価格変動検知**: 大幅な値下げが発生した場合は再通知
+- **自己スケジューリング**: スクレイパーが自らの次回実行タイミングを設定
 
 ### ⚙️ **システム機能**
 - **セール条件設定**: 設定可能な割引率や価格閾値でセール判定をカスタマイズ可能
 - **LINE通知**: セール発生時にはリッチメッセージでお知らせ
-- **自己スケジューリング**: スクレイパーが自らの次回実行タイミングを設定
 - **高速配信**: CloudFrontによる世界規模のCDN配信
+- **共通レイヤー**: Lambda関数間での依存関係共有
 
 ## 技術スタック
 
@@ -113,6 +122,8 @@ graph TB
 - **バックエンド**:
   - Python 3.13
   - AWS Lambda
+    - **kindle_items.py**: Kindle Items API (アイテム管理)
+    - **kindle_scraper.py**: Kindle Scraper (価格監視・通知)
   - AWS API Gateway (JWT Authorizer)
   - AWS EventBridge (CloudWatch Events)
 
@@ -134,7 +145,7 @@ graph TB
   - Flex Message
 
 - **インフラ管理**:
-  - Terraform
+  - Terraform（モジュール化）
   - AWS CLI
 
 ## 前提条件
@@ -155,12 +166,12 @@ git clone https://github.com/yourusername/kindle_sale_checker.git
 cd kindle_sale_checker
 ```
 
-### 2. 新規ファイルの作成
+### 2. コンポーネント名の更新（必要に応じて）
 
 ```bash
-# Cognito認証機能用の新規ファイルを作成
-chmod +x create_cognito_files.sh
-./create_cognito_files.sh
+# 既存プロジェクトの場合、役割を明確化するための名前変更
+chmod +x rename_all_components.sh
+./rename_all_components.sh
 ```
 
 ### 3. 環境変数の設定
@@ -168,7 +179,7 @@ chmod +x create_cognito_files.sh
 機密情報は`terraform.tfvars`ファイルに保存します。テンプレートから作成してください：
 
 ```bash
-cp terraform/terraform.tfvarstemplate terraform/terraform.tfvars
+cp terraform/terraform.tfvars.template terraform/terraform.tfvars
 ```
 
 `terraform.tfvars`を編集し、必要な環境変数を設定してください：
@@ -236,52 +247,85 @@ chmod +x create_admin_user.sh
 ./create_admin_user.sh user@example.com MyTempPassword123!
 ```
 
-### ユーザー管理コマンド
-
-```bash
-# ユーザー一覧表示
-aws cognito-idp list-users --user-pool-id [USER_POOL_ID]
-
-# ユーザー削除
-aws cognito-idp admin-delete-user \
-  --user-pool-id [USER_POOL_ID] \
-  --username [USERNAME]
-
-# パスワードリセット（管理者による強制設定）
-aws cognito-idp admin-set-user-password \
-  --user-pool-id [USER_POOL_ID] \
-  --username [USERNAME] \
-  --password [NEW_PASSWORD] \
-  --permanent
-
-# User Pool IDの取得
-cd terraform
-terraform output cognito_user_pool_id
-```
-
-### ログイン方法
-
-ユーザーは以下のいずれかの方法でログインできます：
-
-- **メールアドレス**: `user@example.com`
-- **生成されたユーザー名**: `user_at_example_com`
-
 ## 個別デプロイ
 
 各コンポーネントを個別にデプロイすることもできます：
 
 ```bash
-# API Lambda関数のみデプロイ
-./deploy_lambda.sh
+# Kindle Items API + Scraper Lambda関数のみデプロイ
+./deploy_kindle_functions.sh
 
-# スクレイパーのみデプロイ
-./deploy_scraper.sh
+# Lambda Layerのみデプロイ
+./deploy_lambda_layer.sh
 
 # フロントエンドのみデプロイ
 ./deploy_frontend.sh
 
 # Cognito設定の更新
 ./update_cognito_config.sh
+```
+
+## ビルドスクリプト
+
+個別コンポーネントのビルドも可能です：
+
+```bash
+# Kindle Items API Lambda関数のビルド
+./build_kindle_items.sh
+
+# Kindle Scraper Lambda関数のビルド
+./build_kindle_scraper.sh
+
+# 共通Lambda Layerのビルド
+./build_lambda_layer.sh
+```
+
+## プロジェクト構造
+
+```
+kindle_sale_checker/
+├── terraform/                    # Terraformファイル
+│   ├── main.tf                   # メインのTerraformファイル
+│   ├── variables.tf              # 変数定義
+│   ├── outputs.tf                # 出力定義
+│   ├── terraform.tfvars          # 機密変数（Gitにコミットしない）
+│   ├── terraform.tfvars.template # 機密変数のテンプレート
+│   ├── environments/             # 環境別変数ファイル
+│   └── modules/                  # Terraformモジュール（役割別）
+│       ├── s3/                   # S3 + CloudFrontモジュール
+│       ├── cognito/              # Cognito認証モジュール
+│       ├── dynamodb/             # DynamoDBモジュール
+│       ├── iam/                  # IAMモジュール
+│       ├── kindle_items/         # Kindle Items APIモジュール
+│       ├── kindle_scraper/       # Kindle Scraperモジュール
+│       ├── lambda_common_layer/  # 共通Lambdaレイヤーモジュール
+│       ├── api_gateway/          # API Gateway + JWT認証モジュール
+│       └── cloudfront/           # CloudFrontモジュール
+├── lambda/                       # Lambda関数のソースコード
+│   ├── kindle_items.py           # Kindle Items API（アイテム管理）
+│   ├── kindle_scraper.py         # Kindle Scraper（価格監視・通知）
+│   ├── common_requirements.txt   # 共通の依存関係
+│   └── requirements.txt          # 個別の依存関係
+├── frontend/                     # Reactフロントエンド
+│   ├── public/                   # 静的ファイル
+│   ├── src/                      # ソースコード
+│   │   ├── App.js                # メインコンポーネント（認証対応）
+│   │   ├── AuthComponent.js      # 認証コンポーネント
+│   │   ├── authService.js        # Cognito認証サービス
+│   │   ├── Auth.css              # 認証画面スタイル
+│   │   └── App.css               # アプリスタイル
+│   └── package.json              # npm設定（Cognito依存関係含む）
+├── build_kindle_items.sh         # Kindle Items APIビルドスクリプト
+├── build_kindle_scraper.sh       # Kindle Scraperビルドスクリプト
+├── build_lambda_layer.sh         # 共通レイヤービルドスクリプト
+├── deploy_kindle_functions.sh    # Kindle Lambda関数デプロイスクリプト
+├── deploy_lambda_layer.sh        # Lambda Layerデプロイスクリプト
+├── deploy_frontend.sh            # フロントエンドデプロイスクリプト
+├── deploy_all.sh                 # 一括デプロイスクリプト
+├── create_admin_user.sh          # 管理者ユーザー作成スクリプト
+├── update_cognito_config.sh      # Cognito設定更新スクリプト
+├── rename_all_components.sh      # コンポーネント名変更スクリプト
+└── .gitignore                    # Gitの除外ファイル設定
 ```
 
 ## システムの特徴
@@ -312,51 +356,11 @@ terraform output cognito_user_pool_id
 - **Lambda Layer**: 共通ライブラリの効率的な管理
 - **DynamoDB**: 高速でスケーラブルなNoSQLデータベース
 
-## プロジェクト構造
+### 🧩 **モジュール化**
 
-```
-kindle_sale_checker/
-├── terraform/          # Terraformファイル
-│   ├── main.tf         # メインのTerraformファイル
-│   ├── variables.tf    # 変数定義
-│   ├── outputs.tf      # 出力定義
-│   ├── terraform.tfvars # 機密変数（Gitにコミットしない）
-│   ├── terraform.tfvars.template # 機密変数のテンプレート
-│   ├── environments/   # 環境別変数ファイル
-│   └── modules/        # Terraformモジュール
-│       ├── s3/         # S3 + CloudFrontモジュール
-│       ├── cognito/    # Cognito認証モジュール
-│       ├── dynamodb/   # DynamoDBモジュール
-│       ├── iam/        # IAMモジュール
-│       ├── lambda/     # Lambda APIモジュール
-│       ├── lambda_scraper/ # スクレイパーモジュール
-│       ├── lambda_layer/ # 共通Lambdaレイヤーモジュール
-│       └── api_gateway/ # API Gateway + JWT認証モジュール
-├── lambda/             # Lambda関数のソースコード
-│   ├── main.py         # APIアプリケーション
-│   ├── kindle_scraper.py # スクレイパー関数
-│   ├── common_requirements.txt # 共通の依存関係
-│   └── requirements.txt # APIの依存関係
-├── frontend/           # Reactフロントエンド
-│   ├── public/         # 静的ファイル
-│   ├── src/            # ソースコード
-│   │   ├── App.js      # メインコンポーネント（認証対応）
-│   │   ├── AuthComponent.js # 認証コンポーネント
-│   │   ├── authService.js   # Cognito認証サービス
-│   │   ├── Auth.css    # 認証画面スタイル
-│   │   └── App.css     # アプリスタイル
-│   └── package.json    # npm設定（Cognito依存関係含む）
-├── deploy_lambda.sh    # Lambda関数デプロイスクリプト
-├── deploy_frontend.sh  # フロントエンドデプロイスクリプト
-├── deploy_scraper.sh   # スクレイパーデプロイスクリプト
-├── deploy_all.sh       # 一括デプロイスクリプト
-├── create_admin_user.sh # 管理者ユーザー作成スクリプト
-├── update_cognito_config.sh # Cognito設定更新スクリプト
-├── build_lambda.sh     # Lambda関数ビルドスクリプト
-├── build_scraper_lambda.sh # スクレイパービルドスクリプト
-├── create_common_layer.sh  # 共通レイヤー作成スクリプト
-└── .gitignore          # Gitの除外ファイル設定
-```
+- **役割明確化**: 各コンポーネントの責任が明確に分離
+- **独立デプロイ**: 各Lambda関数を個別にデプロイ可能
+- **共通レイヤー**: 依存関係の一元管理
 
 ## カスタマイズ方法
 
@@ -420,6 +424,21 @@ DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)
 aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
 ```
 
+**問題**: Lambda関数のデプロイ失敗
+```bash
+# 解決方法: 個別にビルド・デプロイ
+./build_kindle_items.sh
+./build_kindle_scraper.sh
+./deploy_kindle_functions.sh production --auto-yes
+```
+
+**問題**: Lambda Layer関連エラー
+```bash
+# 解決方法: レイヤーを再作成・デプロイ
+./build_lambda_layer.sh
+./deploy_lambda_layer.sh production --auto-yes
+```
+
 ### スクレイピング関連
 
 **問題**: Amazonのサイト構造が変更された場合
@@ -435,6 +454,12 @@ current_price_elem = soup.select_one(".newPriceSelector .a-color-price")
 CloudWatch Logsでログを確認し、詳細なエラー情報や処理状況を確認できます：
 
 ```bash
+# Kindle Items APIのログ
+aws logs get-log-events \
+  --log-group-name /aws/lambda/kindle_items_api \
+  --log-stream-name <最新のログストリーム>
+
+# Kindle Scraperのログ
 aws logs get-log-events \
   --log-group-name /aws/lambda/kindle_scraper \
   --log-stream-name <最新のログストリーム>
@@ -465,6 +490,34 @@ aws logs get-log-events \
 - DynamoDB: 25GB、2.5億リクエスト/月まで無料
 - Cognito: 50,000人/月まで無料
 
+## コンポーネント役割説明
+
+### 📦 Kindle Items API (`kindle_items.py`)
+- **責任**: Kindleアイテムの管理
+- **機能**: 
+  - アイテムの登録・取得・削除（CRUD操作）
+  - DynamoDBとの連携
+  - 認証済みAPIエンドポイントの提供
+- **アクセス**: API Gateway経由、Cognito JWT認証必須
+
+### 🕷️ Kindle Scraper (`kindle_scraper.py`)
+- **責任**: 価格監視と通知
+- **機能**:
+  - Amazonからの価格スクレイピング
+  - セール情報の検出
+  - LINE通知の送信
+  - 自動スケジューリング
+- **実行**: EventBridge経由の定期実行
+
+### 📦 Lambda Common Layer
+- **責任**: 共通依存関係の管理
+- **含まれるパッケージ**:
+  - `boto3`: AWS SDK
+  - `beautifulsoup4`: HTMLパーサー
+  - `requests`: HTTP通信
+  - `line-bot-sdk`: LINE通知
+- **用途**: 両Lambda関数で共有、デプロイサイズの削減
+
 ## 今後の拡張予定
 
 - **複数通知先対応**: 複数のLINEユーザーへの通知
@@ -472,6 +525,8 @@ aws logs get-log-events \
 - **ジャンル別管理**: 本のジャンル別の分類と管理
 - **カスタム通知条件**: ユーザーごとの通知条件設定
 - **ダッシュボード機能**: 価格推移グラフや統計情報の表示
+- **Slack連携**: LINE以外の通知チャンネル追加
+- **書籍メタデータ拡張**: 著者情報、出版日等の追加情報管理
 
 ## ライセンス
 
@@ -484,6 +539,33 @@ aws logs get-log-events \
 3. 変更をコミット (`git commit -m 'Add amazing feature'`)
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
+
+## 開発ガイドライン
+
+### コーディング規約
+- **Python**: PEP 8準拠
+- **JavaScript/React**: ESLint標準設定
+- **Terraform**: HashiCorp推奨スタイル
+- **インデント**: 空白2文字（設定済み）
+
+### テスト
+```bash
+# Lambda関数のローカルテスト
+python -m pytest lambda/tests/
+
+# フロントエンドのテスト
+cd frontend && npm test
+```
+
+### デバッグ
+```bash
+# ローカル環境でのLambda関数実行
+python lambda/kindle_items.py
+python lambda/kindle_scraper.py
+
+# フロントエンドの開発サーバー
+cd frontend && npm start
+```
 
 ---
 

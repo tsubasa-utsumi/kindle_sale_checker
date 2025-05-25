@@ -1,4 +1,4 @@
-# terraform/outputs.tf (CloudFront API統合版)
+# terraform/outputs.tf (役割明確化版)
 # 出力値の定義
 
 # API Gateway直接アクセス（開発用）
@@ -56,15 +56,15 @@ output "dynamodb_table_name" {
   description = "DynamoDBテーブル名"
 }
 
-# Lambda関連
+# Lambda関連（更新済み）
 output "lambda_function_name" {
-  value       = module.lambda.lambda_function_name
-  description = "items用Lambda関数名"
+  value       = module.kindle_items.lambda_function_name
+  description = "Kindle Items API Lambda関数名"
 }
 
 output "lambda_scraper_function_name" {
-  value       = module.lambda_scraper.lambda_function_name
-  description = "scraper用Lambda関数名（updateルートでも使用）"
+  value       = module.kindle_scraper.lambda_function_name
+  description = "Kindle Scraper Lambda関数名（updateルートでも使用）"
 }
 
 # Cognito関連
@@ -112,4 +112,20 @@ output "endpoint_usage_guide" {
     frontend = "https://${module.cloudfront.domain_name} - フロントエンドアプリケーション"
   }
   description = "エンドポイントの使い分けガイド"
+}
+
+# Lambda Layer関連
+output "lambda_layer_arn" {
+  value       = module.lambda_common_layer.layer_arn
+  description = "共通Lambda Layer ARN"
+}
+
+# コンポーネント役割説明
+output "component_roles" {
+  value = {
+    kindle_items_api = "Kindleアイテムの登録・取得・削除を行うAPI"
+    kindle_scraper   = "Kindleの価格監視・スクレイピング・通知機能"
+    lambda_layer     = "両Lambda関数で共有する依存関係（BeautifulSoup、requests等）"
+  }
+  description = "各コンポーネントの役割説明"
 }

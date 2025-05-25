@@ -1,4 +1,4 @@
-# terraform/main.tf (CloudFront API統合版)
+# terraform/main.tf (役割明確化版)
 provider "aws" {
   region = var.aws_region
 }
@@ -22,7 +22,7 @@ module "dynamodb" {
   environment  = var.environment
 }
 
-# Cognitoモジュール
+# Cognitoモジュール（認証管理）
 module "cognito" {
   source           = "./modules/cognito"
   project_name     = var.project_name
@@ -32,7 +32,7 @@ module "cognito" {
   cloudfront_domain = module.cloudfront.domain_name
 }
 
-# IAMモジュール
+# IAMモジュール（権限管理）
 module "iam" {
   source           = "./modules/iam"
   project_name     = var.project_name
@@ -40,34 +40,34 @@ module "iam" {
   dynamodb_arn     = module.dynamodb.table_arn
 }
 
-# 共通Lambda Layerモジュール
-module "lambda_layer" {
-  source       = "./modules/lambda_layer"
+# 共通Lambda Layerモジュール（依存関係管理）
+module "lambda_common_layer" {
+  source       = "./modules/lambda_common_layer"
   project_name = var.project_name
   environment  = var.environment
   layer_name   = "common_dependencies"
   compatible_runtimes = ["python3.13"]
 }
 
-# items用Lambdaモジュール
-module "lambda" {
-  source                = "./modules/lambda"
+# Kindle Items APIモジュール（アイテム管理API）
+module "kindle_items" {
+  source                = "./modules/kindle_items"
   function_name         = var.lambda_function_name
   lambda_role_arn       = module.iam.lambda_role_arn
   dynamodb_table_name   = var.dynamodb_table_name
   project_name          = var.project_name
   environment           = var.environment
-  layer_arn             = module.lambda_layer.layer_arn
+  layer_arn             = module.lambda_common_layer.layer_arn
 }
 
 # API Gatewayモジュール（Cognito認証対応）
 module "api_gateway" {
   source                      = "./modules/api_gateway"
   api_name                    = var.api_name
-  lambda_invoke_arn           = module.lambda.lambda_invoke_arn
-  lambda_function_name        = module.lambda.lambda_function_name
-  update_lambda_invoke_arn    = module.lambda_scraper.lambda_arn
-  update_lambda_function_name = module.lambda_scraper.lambda_function_name
+  lambda_invoke_arn           = module.kindle_items.lambda_invoke_arn
+  lambda_function_name        = module.kindle_items.lambda_function_name
+  update_lambda_invoke_arn    = module.kindle_scraper.lambda_arn
+  update_lambda_function_name = module.kindle_scraper.lambda_function_name
   project_name                = var.project_name
   environment                 = var.environment
   
@@ -76,7 +76,7 @@ module "api_gateway" {
   cognito_user_pool_client_id = module.cognito.user_pool_client_id
 }
 
-# CloudFrontモジュール（API統合版）
+# CloudFrontモジュール（CDN・API統合版）
 module "cloudfront" {
   source                 = "./modules/cloudfront"
   project_name           = var.project_name
@@ -92,15 +92,15 @@ module "cloudfront" {
   api_gateway_id         = module.api_gateway.api_id
 }
 
-# Scraper用Lambdaモジュール
-module "lambda_scraper" {
-  source                = "./modules/lambda_scraper"
+# Kindle Scraperモジュール（価格監視・通知）
+module "kindle_scraper" {
+  source                = "./modules/kindle_scraper"
   function_name         = var.lambda_scraper_name
   lambda_role_arn       = module.iam.lambda_role_arn
   dynamodb_table_name   = var.dynamodb_table_name
   project_name          = var.project_name
   environment           = var.environment
-  layer_arn             = module.lambda_layer.layer_arn
+  layer_arn             = module.lambda_common_layer.layer_arn
   environment_variables = {
     LINE_CHANNEL_ACCESS_TOKEN = var.line_channel_access_token
     LINE_USER_ID              = var.line_user_id
