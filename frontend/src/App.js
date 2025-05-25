@@ -1,12 +1,14 @@
-// frontend/src/App.js (CloudFront API統合版)
+// frontend/src/App.js (環境変数対応版)
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
 import AuthComponent from './AuthComponent';
-import { getCurrentUser, signOut, getIdToken } from './authService';
+import { getCurrentUser, signOut, getIdToken, validateConfiguration } from './authService';
 
-// APIのベースURL - デプロイ時にTerraformのoutputから自動設定
-const API_URL = 'TERRAFORM_API_ENDPOINT_PLACEHOLDER';
+// 環境変数からAPIエンドポイントを取得（フォールバック値付き）
+const getApiUrl = () => {
+  return process.env.REACT_APP_API_ENDPOINT || 'TERRAFORM_API_ENDPOINT_PLACEHOLDER';
+};
 
 function App() {
   const [items, setItems] = useState([]);
@@ -17,10 +19,21 @@ function App() {
   const [latestUpdate, setLatestUpdate] = useState(null);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [configurationError, setConfigurationError] = useState(null);
 
-  // 認証状態チェック
+  // アプリ起動時に設定の検証
   useEffect(() => {
-    checkAuthState();
+    const validation = validateConfiguration();
+    const apiUrl = getApiUrl();
+    
+    if (!validation.userPoolId || !validation.clientId) {
+      setConfigurationError('Cognito設定が正しく構成されていません。環境変数を確認してください。');
+    } else if (apiUrl === 'TERRAFORM_API_ENDPOINT_PLACEHOLDER') {
+      setConfigurationError('API設定が正しく構成されていません。環境変数を確認してください。');
+    } else {
+      setConfigurationError(null);
+      checkAuthState();
+    }
   }, []);
 
   const checkAuthState = async () => {
@@ -32,7 +45,9 @@ function App() {
         fetchItems();
       }
     } catch (error) {
-      console.log('認証されていません:', error);
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('認証されていません:', error);
+      }
       setUser(null);
     } finally {
       setAuthLoading(false);
@@ -43,8 +58,10 @@ function App() {
   const getAuthenticatedAxios = async () => {
     try {
       const token = await getIdToken();
+      const apiUrl = getApiUrl();
+      
       return axios.create({
-        baseURL: API_URL,
+        baseURL: apiUrl,
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -83,12 +100,14 @@ function App() {
         const elapsedMilliseconds = now.getTime() - startTime.getTime();
         const elapsedMinutes = elapsedMilliseconds / (1000 * 60);
         
-        console.log('更新状態チェック:', {
-          startTime: updateLock.started_at,
-          now: now.toISOString(),
-          elapsedMinutes: Math.round(elapsedMinutes * 10) / 10,
-          isWithinHour: elapsedMinutes < 60
-        });
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('更新状態チェック:', {
+            startTime: updateLock.started_at,
+            now: now.toISOString(),
+            elapsedMinutes: Math.round(elapsedMinutes * 10) / 10,
+            isWithinHour: elapsedMinutes < 60
+          });
+        }
         
         if (elapsedMinutes < 60 && elapsedMinutes >= 0) {
           return { 
@@ -97,7 +116,9 @@ function App() {
             startTime: updateLock.started_at 
           };
         } else {
-          console.log('更新ロックが期限切れです:', Math.round(elapsedMinutes), '分経過');
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.log('更新ロックが期限切れです:', Math.round(elapsedMinutes), '分経過');
+          }
         }
       } catch (error) {
         console.error('時刻の解析エラー:', error, updateLock.started_at);
@@ -113,7 +134,9 @@ function App() {
         const result = await apiCall();
         return result;
       } catch (error) {
-        console.log(`API呼び出し試行 ${attempt}/${maxRetries} でエラー:`, error.message);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log(`API呼び出し試行 ${attempt}/${maxRetries} でエラー:`, error.message);
+        }
         
         // 認証エラーの場合は即座に失敗
         if (error.response?.status === 401 || error.response?.status === 403) {
@@ -131,7 +154,9 @@ function App() {
           error.code === 'ECONNABORTED' ||
           error.message.includes('Network Error')
         )) {
-          console.log(`${retryDelay}ms後にリトライします...`);
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.log(`${retryDelay}ms後にリトライします...`);
+          }
           await new Promise(resolve => setTimeout(resolve, retryDelay));
           retryDelay *= 1.5;
         } else {
@@ -153,17 +178,23 @@ function App() {
         () => authAxios.get('/items/')
       );
       
-      console.log('API Response:', response.data);
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('API Response:', response.data);
+      }
       
       if (Array.isArray(response.data)) {
         const updateStatus = checkUpdateStatus(response.data);
         
         if (updateStatus.isUpdating && !updating) {
           setUpdating(true);
-          console.log('更新中状態を検出:', updateStatus);
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.log('更新中状態を検出:', updateStatus);
+          }
         } else if (!updateStatus.isUpdating && updating) {
           setUpdating(false);
-          console.log('更新完了を検出');
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.log('更新完了を検出');
+          }
         }
         
         const bookItems = response.data.filter(item => item.id !== '__UPDATE_LOCK__');
@@ -222,16 +253,22 @@ function App() {
     let interval;
     
     if (updating && user) {
-      console.log('更新中のポーリングを開始します（1分間隔）');
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('更新中のポーリングを開始します（1分間隔）');
+      }
       interval = setInterval(async () => {
         try {
           const updateStatus = await fetchItems(true);
           
           if (updateStatus && !updateStatus.isUpdating) {
-            console.log('ポーリングで更新完了を検出しました');
+            if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+              console.log('ポーリングで更新完了を検出しました');
+            }
             setUpdating(false);
           } else if (updateStatus && updateStatus.isUpdating) {
-            console.log('まだ更新中です。経過時間:', Math.round(updateStatus.elapsed * 10) / 10, '分');
+            if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+              console.log('まだ更新中です。経過時間:', Math.round(updateStatus.elapsed * 10) / 10, '分');
+            }
           }
         } catch (error) {
           console.error('ポーリング中にエラーが発生:', error);
@@ -241,7 +278,9 @@ function App() {
     
     return () => {
       if (interval) {
-        console.log('ポーリングを停止します');
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('ポーリングを停止します');
+        }
         clearInterval(interval);
       }
     };
@@ -263,7 +302,9 @@ function App() {
         () => authAxios.post('/items', { url })
       );
       
-      console.log('Item created:', response.data);
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('Item created:', response.data);
+      }
       
       setUrl('');
       fetchItems();
@@ -302,7 +343,9 @@ function App() {
   // 更新（認証付き）
   const updateItems = async () => {
     if (updating) {
-      console.log('既に更新処理が実行中です');
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('既に更新処理が実行中です');
+      }
       return;
     }
 
@@ -310,18 +353,24 @@ function App() {
     setError(null);
     
     try {
-      console.log('スクレイパーの更新を開始します...');
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('スクレイパーの更新を開始します...');
+      }
       
       const authAxios = await getAuthenticatedAxios();
       authAxios.post('/update', {}, { 
         timeout: 5000
       }).then(response => {
-        console.log('更新開始が正常に受け付けられました:', response.data);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('更新開始が正常に受け付けられました:', response.data);
+        }
       }).catch(err => {
         console.warn('更新開始の確認でエラーが発生しましたが、処理は継続している可能性があります:', err.message);
       });
       
-      console.log('更新リクエストを送信しました。ポーリングで状態を監視します。');
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.log('更新リクエストを送信しました。ポーリングで状態を監視します。');
+      }
       
     } catch (err) {
       console.error('更新の開始に失敗しました:', err);
@@ -359,6 +408,34 @@ function App() {
     return Math.round((points / price) * 100);
   };
 
+  // 設定エラーがある場合
+  if (configurationError) {
+    return (
+      <div className="app-container">
+        <div className="error-message">
+          <h2>設定エラー</h2>
+          <p>{configurationError}</p>
+          <br />
+          <p><strong>解決方法:</strong></p>
+          <ol>
+            <li><code>./create_config_files.sh</code> を実行してください</li>
+            <li>フロントエンドを再ビルドしてください: <code>npm run build</code></li>
+            <li>問題が続く場合は管理者に連絡してください</li>
+          </ol>
+          
+          {process.env.REACT_APP_DEBUG_MODE === 'true' && (
+            <div style={{ marginTop: '20px', fontSize: '12px', background: '#f5f5f5', padding: '10px' }}>
+              <strong>デバッグ情報:</strong><br />
+              API URL: {getApiUrl()}<br />
+              Debug Mode: {process.env.REACT_APP_DEBUG_MODE}<br />
+              Environment: {process.env.NODE_ENV}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // 認証状態をチェック中
   if (authLoading) {
     return (
@@ -387,6 +464,16 @@ function App() {
           </button>
         </div>
       </div>
+      
+      {/* デバッグ情報（開発時のみ表示） */}
+      {process.env.REACT_APP_DEBUG_MODE === 'true' && (
+        <div style={{ background: '#f0f8ff', padding: '10px', marginBottom: '20px', fontSize: '12px', border: '1px solid #ccc' }}>
+          <strong>デバッグ情報:</strong><br />
+          API URL: {getApiUrl()}<br />
+          Environment: {process.env.NODE_ENV}<br />
+          Debug Mode: {process.env.REACT_APP_DEBUG_MODE}
+        </div>
+      )}
       
       {/* エラーメッセージ */}
       {error && <div className="error-message">{error}</div>}

@@ -12,12 +12,20 @@ yarn.lock
 build/
 build_scraper/
 dist/
+*.zip
+
+# 環境変数ファイル（機密情報を含むため除外）
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
-*.zip
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+frontend/.env.development
+frontend/.env.production.local
+frontend/.env.development.local
 
 # Lambda関連
 __pycache__/
@@ -61,6 +69,7 @@ terraform.rc
 
 # プランファイル
 tfplan_*
+*_deploy_plan.tfplan
 
 # エディタ関連
 .idea/
@@ -72,3 +81,38 @@ tfplan_*
 # OS関連
 .DS_Store
 Thumbs.db
+
+# バックアップファイル
+*.backup
+*.bak
+frontend/src/*.backup
+
+# 一時ファイル
+temp/
+tmp/
+*.tmp
+
+# ログファイル
+*.log
+logs/
+
+# 機密情報を含むファイル（注意深く管理）
+*secret*
+*password*
+*key*
+*token*
+!frontend/.env.example
+# 環境変数ファイル（機密情報を含むため除外）
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+frontend/.env.development
+frontend/.env.production.local
+frontend/.env.development.local
+
+# バックアップファイル
+*.backup
+frontend/src/*.backup
+
+# 一時ファイル
+frontend/.env.tmp

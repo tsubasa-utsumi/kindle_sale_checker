@@ -1,4 +1,4 @@
-// frontend/src/authService.js (動的設定版)
+// frontend/src/authService.js (環境変数対応版)
 import { 
   CognitoUserPool, 
   CognitoUser, 
@@ -6,10 +6,23 @@ import {
   CognitoUserAttribute
 } from 'amazon-cognito-identity-js';
 
-// Cognito設定 - デプロイ時にTerraformのoutputから自動設定
+// 環境変数から設定を取得（フォールバック値付き）
+const getUserPoolId = () => {
+  return process.env.REACT_APP_COGNITO_USER_POOL_ID || 'TERRAFORM_USER_POOL_ID_PLACEHOLDER';
+};
+
+const getClientId = () => {
+  return process.env.REACT_APP_COGNITO_CLIENT_ID || 'TERRAFORM_CLIENT_ID_PLACEHOLDER';
+};
+
+const getAWSRegion = () => {
+  return process.env.REACT_APP_AWS_REGION || 'ap-northeast-1';
+};
+
+// Cognito設定
 const poolData = {
-  UserPoolId: 'TERRAFORM_USER_POOL_ID_PLACEHOLDER',
-  ClientId: 'TERRAFORM_CLIENT_ID_PLACEHOLDER'
+  UserPoolId: getUserPoolId(),
+  ClientId: getClientId()
 };
 
 const userPool = new CognitoUserPool(poolData);
@@ -25,8 +38,31 @@ export const getCognitoSettings = () => {
   return {
     userPoolId: poolData.UserPoolId,
     clientId: poolData.ClientId,
-    region: poolData.UserPoolId ? poolData.UserPoolId.split('_')[0] : 'unknown'
+    region: getAWSRegion(),
+    isConfiguredFromEnv: !!(process.env.REACT_APP_COGNITO_USER_POOL_ID && process.env.REACT_APP_COGNITO_CLIENT_ID)
   };
+};
+
+/**
+ * 設定の有効性をチェック
+ */
+export const validateConfiguration = () => {
+  const settings = getCognitoSettings();
+  
+  const isValid = {
+    userPoolId: settings.userPoolId !== 'TERRAFORM_USER_POOL_ID_PLACEHOLDER' && settings.userPoolId.length > 0,
+    clientId: settings.clientId !== 'TERRAFORM_CLIENT_ID_PLACEHOLDER' && settings.clientId.length > 0,
+    configured: settings.isConfiguredFromEnv
+  };
+  
+  if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+    console.log('Cognito Configuration Status:', {
+      ...settings,
+      isValid
+    });
+  }
+  
+  return isValid;
 };
 
 /**
@@ -34,6 +70,12 @@ export const getCognitoSettings = () => {
  */
 export const signUp = (email, password) => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。'));
+      return;
+    }
+
     const attributeList = [
       new CognitoUserAttribute({
         Name: 'email',
@@ -56,6 +98,12 @@ export const signUp = (email, password) => {
  */
 export const confirmSignUp = (email, confirmationCode) => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。'));
+      return;
+    }
+
     const cognitoUser = new CognitoUser({
       Username: email,
       Pool: userPool
@@ -76,6 +124,12 @@ export const confirmSignUp = (email, confirmationCode) => {
  */
 export const resendConfirmationCode = (email) => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。'));
+      return;
+    }
+
     const cognitoUser = new CognitoUser({
       Username: email,
       Pool: userPool
@@ -96,6 +150,12 @@ export const resendConfirmationCode = (email) => {
  */
 export const signIn = (email, password) => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。環境変数を確認してください。'));
+      return;
+    }
+
     const authenticationDetails = new AuthenticationDetails({
       Username: email,
       Password: password
@@ -125,16 +185,22 @@ export const signIn = (email, password) => {
         };
         localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
         
-        console.log('サインイン成功:', userInfo);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('サインイン成功:', userInfo);
+        }
         resolve(result);
       },
       onFailure: (err) => {
-        console.error('サインインエラー:', err);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.error('サインインエラー:', err);
+        }
         reject(err);
       },
       newPasswordRequired: (userAttributes, requiredAttributes) => {
         // 新しいパスワードが必要な場合
-        console.log('新しいパスワードが必要です');
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('新しいパスワードが必要です');
+        }
         const error = new Error('新しいパスワードの設定が必要です');
         error.name = 'NewPasswordRequiredError';
         error.cognitoUser = cognitoUser;
@@ -175,11 +241,15 @@ export const setNewPassword = (cognitoUser, newPassword) => {
         };
         localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
         
-        console.log('新しいパスワード設定成功:', userInfo);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('新しいパスワード設定成功:', userInfo);
+        }
         resolve(result);
       },
       onFailure: (err) => {
-        console.error('新しいパスワード設定エラー:', err);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.error('新しいパスワード設定エラー:', err);
+        }
         reject(err);
       }
     });
@@ -191,6 +261,12 @@ export const setNewPassword = (cognitoUser, newPassword) => {
  */
 export const getCurrentUser = () => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。'));
+      return;
+    }
+
     const cognitoUser = userPool.getCurrentUser();
     
     if (!cognitoUser) {
@@ -201,7 +277,9 @@ export const getCurrentUser = () => {
           resolve(JSON.parse(userInfo));
           return;
         } catch (e) {
-          console.error('ユーザー情報の解析エラー:', e);
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.error('ユーザー情報の解析エラー:', e);
+          }
         }
       }
       reject(new Error('ユーザーが見つかりません'));
@@ -210,7 +288,9 @@ export const getCurrentUser = () => {
 
     cognitoUser.getSession((err, session) => {
       if (err) {
-        console.error('セッション取得エラー:', err);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.error('セッション取得エラー:', err);
+        }
         // ローカルストレージをクリア
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
@@ -219,7 +299,9 @@ export const getCurrentUser = () => {
       }
 
       if (!session.isValid()) {
-        console.log('セッションが無効です');
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('セッションが無効です');
+        }
         // トークンをリフレッシュしてみる
         refreshToken()
           .then(() => {
@@ -254,6 +336,12 @@ export const getCurrentUser = () => {
  */
 export const getIdToken = () => {
   return new Promise((resolve, reject) => {
+    const validation = validateConfiguration();
+    if (!validation.userPoolId || !validation.clientId) {
+      reject(new Error('Cognito設定が正しく構成されていません。'));
+      return;
+    }
+
     // まずローカルストレージから取得を試みる
     const tokens = localStorage.getItem(TOKEN_KEY);
     if (tokens) {
@@ -267,7 +355,9 @@ export const getIdToken = () => {
           return;
         }
       } catch (e) {
-        console.error('トークンの解析エラー:', e);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.error('トークンの解析エラー:', e);
+        }
       }
     }
 
@@ -281,7 +371,9 @@ export const getIdToken = () => {
 
     cognitoUser.getSession((err, session) => {
       if (err) {
-        console.error('セッション取得エラー:', err);
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.error('セッション取得エラー:', err);
+        }
         reject(err);
         return;
       }
@@ -334,7 +426,9 @@ export const refreshToken = () => {
       
       cognitoUser.refreshSession(refreshTokenObj, (err, session) => {
         if (err) {
-          console.error('トークンリフレッシュエラー:', err);
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.error('トークンリフレッシュエラー:', err);
+          }
           // リフレッシュに失敗した場合、ローカルストレージをクリア
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(USER_KEY);
@@ -351,7 +445,9 @@ export const refreshToken = () => {
         };
         localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
         
-        console.log('トークンをリフレッシュしました');
+        if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+          console.log('トークンをリフレッシュしました');
+        }
         resolve(session);
       });
     });
@@ -373,7 +469,9 @@ export const signOut = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     
-    console.log('サインアウトしました');
+    if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+      console.log('サインアウトしました');
+    }
     resolve();
   });
 };
@@ -392,12 +490,16 @@ export const setupAutoRefresh = () => {
         
         // 有効期限の10分前になったらリフレッシュ
         if (parsedTokens.expiration && parsedTokens.expiration <= now + 600000) {
-          console.log('トークンの自動リフレッシュを実行します');
+          if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+            console.log('トークンの自動リフレッシュを実行します');
+          }
           await refreshToken();
         }
       }
     } catch (error) {
-      console.error('自動リフレッシュエラー:', error);
+      if (process.env.REACT_APP_DEBUG_MODE === 'true') {
+        console.error('自動リフレッシュエラー:', error);
+      }
     }
   }, 30 * 60 * 1000); // 30分
 };

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# deploy_frontend.sh (動的設定版)
+# deploy_frontend.sh (環境変数対応版・修正版)
 
 # 使用方法の表示
 function show_usage {
@@ -37,95 +37,64 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Terraformから設定を動的に取得する関数
-get_terraform_config() {
-  echo "🔧 Terraformから設定情報を取得しています..."
-  
-  if [ ! -d "terraform" ]; then
-    echo "エラー: terraformディレクトリが見つかりません"
-    exit 1
-  fi
-  
-  cd terraform
-  
-  # 必要な設定値を取得
-  API_ENDPOINT=$(terraform output -raw api_endpoint 2>/dev/null)
-  USER_POOL_ID=$(terraform output -raw cognito_user_pool_id 2>/dev/null)
-  CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id 2>/dev/null)
-  S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null)
-  
-  cd ..
-  
-  # 設定値の検証
-  if [ -z "$API_ENDPOINT" ] || [ -z "$USER_POOL_ID" ] || [ -z "$CLIENT_ID" ] || [ -z "$S3_BUCKET" ]; then
-    echo "エラー: Terraformから必要な設定を取得できませんでした"
-    echo "取得された値:"
-    echo "  API_ENDPOINT: $API_ENDPOINT"
-    echo "  USER_POOL_ID: $USER_POOL_ID"
-    echo "  CLIENT_ID: $CLIENT_ID"
-    echo "  S3_BUCKET: $S3_BUCKET"
-    echo ""
-    echo "Terraformが正しくデプロイされているか確認してください"
-    exit 1
-  fi
-  
-  echo "✅ 設定情報を取得しました:"
-  echo "  API Endpoint: $API_ENDPOINT"
-  echo "  User Pool ID: $USER_POOL_ID"
-  echo "  Client ID: $CLIENT_ID"
-  echo "  S3 Bucket: $S3_BUCKET"
-}
-
-# フロントエンドの設定を更新する関数
-update_frontend_config() {
-  echo "🔧 フロントエンドの設定を更新しています..."
-  
-  # App.jsのAPI_URLを更新
-  if [ -f "frontend/src/App.js" ]; then
-    # macOSの場合とLinuxの場合で分岐
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      # macOSの場合
-      sed -i '' "s|const API_URL = '.*'|const API_URL = '$API_ENDPOINT'|" frontend/src/App.js
-    else
-      # Linuxの場合
-      sed -i "s|const API_URL = '.*'|const API_URL = '$API_ENDPOINT'|" frontend/src/App.js
-    fi
-    
-    echo "  ✓ App.jsのAPI_URLを更新: $API_ENDPOINT"
-  else
-    echo "  ⚠️ frontend/src/App.js が見つかりません"
-  fi
-  
-  # authService.jsのCognito設定を更新
-  if [ -f "frontend/src/authService.js" ]; then
-    # macOSの場合とLinuxの場合で分岐
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      # macOSの場合
-      sed -i '' "s|UserPoolId: '.*'|UserPoolId: '$USER_POOL_ID'|" frontend/src/authService.js
-      sed -i '' "s|ClientId: '.*'|ClientId: '$CLIENT_ID'|" frontend/src/authService.js
-    else
-      # Linuxの場合
-      sed -i "s|UserPoolId: '.*'|UserPoolId: '$USER_POOL_ID'|" frontend/src/authService.js
-      sed -i "s|ClientId: '.*'|ClientId: '$CLIENT_ID'|" frontend/src/authService.js
-    fi
-    
-    echo "  ✓ authService.jsのCognito設定を更新"
-  else
-    echo "  ⚠️ frontend/src/authService.js が見つかりません"
-  fi
-}
-
 echo "🚀 ${ENV_NAME} 環境の S3 バケット ${S3_BUCKET} にフロントエンドをデプロイします"
 
-# Terraformから設定を取得
-get_terraform_config
+# 1. 環境設定ファイルを作成
+echo "🔧 環境設定ファイルを作成しています..."
+if [ ! -f "create_config_files.sh" ]; then
+  echo "❌ エラー: create_config_files.sh が見つかりません"
+  exit 1
+fi
 
-# フロントエンドディレクトリに移動
-cd frontend || { echo "フロントエンドディレクトリが見つかりません"; exit 1; }
+chmod +x create_config_files.sh
+./create_config_files.sh || { 
+  echo "❌ 環境設定ファイルの作成に失敗しました"; 
+  exit 1; 
+}
+
+# 2. Terraformから設定を取得
+echo "🔧 Terraformから設定情報を取得しています..."
+
+if [ ! -d "terraform" ]; then
+  echo "❌ エラー: terraformディレクトリが見つかりません"
+  exit 1
+fi
+
+cd terraform
+
+# 必要な設定値を取得
+API_ENDPOINT=$(terraform output -raw api_endpoint 2>/dev/null)
+USER_POOL_ID=$(terraform output -raw cognito_user_pool_id 2>/dev/null)
+CLIENT_ID=$(terraform output -raw cognito_user_pool_client_id 2>/dev/null)
+S3_BUCKET=$(terraform output -raw s3_bucket_name 2>/dev/null)
+
+cd ..
+
+# 設定値の検証
+if [ -z "$API_ENDPOINT" ] || [ -z "$USER_POOL_ID" ] || [ -z "$CLIENT_ID" ] || [ -z "$S3_BUCKET" ]; then
+  echo "❌ エラー: Terraformから必要な設定を取得できませんでした"
+  echo "取得された値:"
+  echo "  API_ENDPOINT: $API_ENDPOINT"
+  echo "  USER_POOL_ID: $USER_POOL_ID"
+  echo "  CLIENT_ID: $CLIENT_ID"
+  echo "  S3_BUCKET: $S3_BUCKET"
+  echo ""
+  echo "Terraformが正しくデプロイされているか確認してください"
+  exit 1
+fi
+
+echo "✅ 設定情報を取得しました:"
+echo "  API Endpoint: $API_ENDPOINT"
+echo "  User Pool ID: $USER_POOL_ID"
+echo "  Client ID: $CLIENT_ID"
+echo "  S3 Bucket: $S3_BUCKET"
+
+# 3. フロントエンドディレクトリに移動
+cd frontend || { echo "❌ フロントエンドディレクトリが見つかりません"; exit 1; }
 
 # package.jsonが存在するか確認
 if [ ! -f "package.json" ]; then
-  echo "package.jsonが見つかりません。frontend初期化スクリプトを実行してください。"
+  echo "❌ package.jsonが見つかりません。frontend初期化スクリプトを実行してください。"
   echo "./init_frontend.sh"
   exit 1
 fi
@@ -133,31 +102,64 @@ fi
 # node_modulesが存在するか確認
 if [ ! -d "node_modules" ]; then
   echo "📦 node_modulesが見つかりません。依存関係をインストールします..."
-  npm install || { echo "依存関係のインストールに失敗しました"; exit 1; }
+  npm install || { echo "❌ 依存関係のインストールに失敗しました"; exit 1; }
 fi
 
 # Cognito依存関係の確認とインストール
 if ! npm list amazon-cognito-identity-js >/dev/null 2>&1; then
   echo "📦 Cognito依存関係をインストールしています..."
-  npm install amazon-cognito-identity-js || { echo "Cognito依存関係のインストールに失敗しました"; exit 1; }
+  npm install amazon-cognito-identity-js || { echo "❌ Cognito依存関係のインストールに失敗しました"; exit 1; }
 fi
 
-cd ..
+# 4. 環境変数ファイルの確認
+if [ ! -f ".env.${ENV_NAME}" ] && [ ! -f ".env.production" ]; then
+  echo "⚠️ 環境設定ファイルが見つかりません。再作成します..."
+  cd ..
+  ./create_config_files.sh || { echo "❌ 環境設定ファイルの再作成に失敗しました"; exit 1; }
+  cd frontend
+fi
 
-# フロントエンドの設定を更新
-update_frontend_config
+# 環境に応じた.envファイルを使用
+ENV_FILE=".env.${ENV_NAME}"
+if [ ! -f "$ENV_FILE" ]; then
+  ENV_FILE=".env.production"
+  echo "⚠️ ${ENV_NAME}用の環境ファイルが見つかりません。.env.productionを使用します"
+fi
 
-cd frontend
+if [ -f "$ENV_FILE" ]; then
+  echo "📋 環境設定ファイルを使用: $ENV_FILE"
+  # 環境変数を一時的にコピー（ビルド時にReactが読み込むため）
+  cp "$ENV_FILE" .env
+else
+  echo "❌ エラー: 環境設定ファイルが見つかりません"
+  exit 1
+fi
 
-# Reactアプリをビルド
+# 5. Reactアプリをビルド
 echo "🏗️ Reactアプリをビルドしています..."
-npm run build
+REACT_APP_ENV="$ENV_NAME" npm run build
 
 # ビルドが成功したか確認
 if [ ! -d "build" ]; then
-  echo "ビルドに失敗しました。エラーを確認してください。"
+  echo "❌ ビルドに失敗しました。エラーを確認してください。"
+  
+  # デバッグ情報を表示
+  echo ""
+  echo "🔍 デバッグ情報:"
+  echo "環境ファイルの内容:"
+  if [ -f ".env" ]; then
+    cat .env | grep -v "TOKEN\|PASSWORD\|SECRET" || echo "環境変数が設定されていません"
+  else
+    echo "❌ .envファイルが見つかりません"
+  fi
+  
+  # 一時的な.envファイルを削除
+  rm -f .env
   exit 1
 fi
+
+# 一時的な.envファイルを削除
+rm -f .env
 
 # エラーページの作成（存在しなければ）
 if [ ! -f "build/error.html" ]; then
@@ -165,16 +167,16 @@ if [ ! -f "build/error.html" ]; then
   cp build/index.html build/error.html
 fi
 
-# S3バケットを確認
+# 6. S3バケットを確認
 echo "☁️ S3バケット ${S3_BUCKET} を確認しています..."
 if ! aws s3 ls "s3://${S3_BUCKET}" >/dev/null 2>&1; then
-  echo "警告: S3バケット ${S3_BUCKET} が存在しないようです。"
+  echo "⚠️ 警告: S3バケット ${S3_BUCKET} が存在しないようです。"
   echo "まずTerraformを使ってインフラをデプロイしてください。"
   
   if [ "$AUTO_YES" = false ]; then
     read -p "それでも続行しますか？ (y/n): " CONFIRM
     if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
-      echo "デプロイをキャンセルしました"
+      echo "❌ デプロイをキャンセルしました"
       exit 0
     fi
   else
@@ -182,10 +184,10 @@ if ! aws s3 ls "s3://${S3_BUCKET}" >/dev/null 2>&1; then
   fi
 fi
 
-# S3に同期（ACLオプションなし、バケットポリシーで権限管理）
+# 7. S3に同期
 echo "📁 ファイルをS3バケットに同期しています..."
 
-# Step 1: 一括同期（シンプルアプローチ）
+# Step 1: 一括同期
 echo "  📁 全ファイルを同期中..."
 aws s3 sync build/ "s3://${S3_BUCKET}" --delete
 
@@ -247,7 +249,7 @@ echo "✅ ヘッダー設定完了"
 
 echo "✅ フロントエンドが S3 バケット ${S3_BUCKET} にデプロイされました"
 
-# CloudFrontのディストリビューションIDを取得してキャッシュを無効化
+# 8. CloudFrontのディストリビューションIDを取得してキャッシュを無効化
 echo "☁️ CloudFrontキャッシュを無効化しています..."
 cd ../terraform
 CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null)
@@ -269,7 +271,7 @@ fi
 
 cd ../frontend
 
-# 完了メッセージとアクセス情報の表示
+# 9. 完了メッセージとアクセス情報の表示
 echo ""
 echo "🎉 デプロイ完了！"
 echo "ウェブサイトにアクセスするには以下のURLを使用してください:"
@@ -297,6 +299,12 @@ echo "📋 設定情報:"
 echo "  🌐 API Endpoint: $API_ENDPOINT"
 echo "  🔐 Cognito User Pool ID: $USER_POOL_ID"
 echo "  🆔 Cognito Client ID: $CLIENT_ID"
+echo "  📦 Environment: $ENV_NAME"
+echo ""
+echo "🔧 設定管理:"
+echo "  ✅ 環境変数ファイルを使用してデプロイしました"
+echo "  🛡️ 機密情報はGitにコミットされません"
+echo "  📝 設定変更時は ./create_config_files.sh を再実行してください"
 echo ""
 echo "💡 CloudFrontキャッシュの反映には数分かかる場合があります"
 echo ""
