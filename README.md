@@ -1,3 +1,16 @@
+# はじめに
+これらのソースはほぼ全てAIに作ってもらいました  
+主に使ったのはこれらです
+- Claude Sonnet 3.7
+  - 前半はこれがメイン
+- Claude Sonnet 4
+  - 途中でこれがリリースされたので後半はこれがメイン
+- Gemini 2.5 Flash
+  - Claudeで埒が明かない時に助けてもらった
+
+これより下はすべてAIが考えてくれました  
+ではどうぞ
+
 # Kindle Sale Checker
 
 AWS (CloudFront, S3, Lambda, DynamoDB, Cognito)を使用したKindleの本のセール情報チェックシステムです。
