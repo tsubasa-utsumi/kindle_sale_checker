@@ -375,7 +375,7 @@ def check_kindle_sales(items, table):
         item['points'] = point_value
         
         # Amazonのレート制限を回避するために少し待機
-        random_value = random.randint(1, 3)
+        random_value = random.uniform(0.3, 1)
         time.sleep(random_value)
         
     return sale_items
