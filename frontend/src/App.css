@@ -206,6 +206,26 @@ button:disabled {
   color: #666;
 }
 
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sort-control select {
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #fff;
+  cursor: pointer;
+}
+
+.sort-control select:disabled {
+  background-color: #f0f0f0;
+  cursor: not-allowed;
+}
+
 .update-button {
   background-color: #27ae60;
   font-size: 14px;

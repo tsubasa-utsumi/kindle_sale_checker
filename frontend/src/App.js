@@ -20,6 +20,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [configurationError, setConfigurationError] = useState(null);
+  // 並び替え設定（key: 'default' | 'price' | 'discount', order: 'asc' | 'desc'）
+  const [sortConfig, setSortConfig] = useState({ key: 'default', order: 'desc' });
 
   // アプリ起動時に設定の検証
   useEffect(() => {
@@ -408,6 +410,43 @@ function App() {
     return Math.round((points / price) * 100);
   };
 
+  // 選択された条件でアイテムを並び替える
+  // ※ 割引率は保存された定価が無いため、ポイント還元率（ポイント / 現在価格）を用いる
+  const getSortedItems = (list) => {
+    if (sortConfig.key === 'default') {
+      return list;
+    }
+
+    const direction = sortConfig.order === 'asc' ? 1 : -1;
+
+    return [...list].sort((a, b) => {
+      // 価格・割引率が取得できないアイテムは常に末尾へ
+      const aMissing = a.current_price === null || a.current_price === undefined;
+      const bMissing = b.current_price === null || b.current_price === undefined;
+      if (aMissing && !bMissing) return 1;
+      if (!aMissing && bMissing) return -1;
+      if (aMissing && bMissing) return 0;
+
+      let valueA;
+      let valueB;
+      if (sortConfig.key === 'price') {
+        valueA = a.current_price;
+        valueB = b.current_price;
+      } else {
+        // 'discount'（ポイント還元率）
+        valueA = calculatePointRatio(a.current_price, a.points);
+        valueB = calculatePointRatio(b.current_price, b.points);
+      }
+
+      if (valueA < valueB) return -1 * direction;
+      if (valueA > valueB) return 1 * direction;
+      return 0;
+    });
+  };
+
+  // 表示用に並び替えたアイテム
+  const displayItems = getSortedItems(items);
+
   // 設定エラーがある場合
   if (configurationError) {
     return (
@@ -506,6 +545,24 @@ function App() {
         <div className="items-header">
           <h2>登録済みの本</h2>
           <div className="update-info">
+            <div className="sort-control">
+              <label htmlFor="sort-select">並び替え:</label>
+              <select
+                id="sort-select"
+                value={`${sortConfig.key}-${sortConfig.order}`}
+                onChange={(e) => {
+                  const [key, order] = e.target.value.split('-');
+                  setSortConfig({ key, order });
+                }}
+                disabled={updating}
+              >
+                <option value="default-desc">おすすめ順</option>
+                <option value="price-asc">現在価格（安い順）</option>
+                <option value="price-desc">現在価格（高い順）</option>
+                <option value="discount-desc">割引率（高い順）</option>
+                <option value="discount-asc">割引率（低い順）</option>
+              </select>
+            </div>
             <span>最終更新: {formatDateTime(latestUpdate)}</span>
             <button 
               className={`update-button ${updating ? 'updating' : ''}`}
@@ -528,11 +585,11 @@ function App() {
         
         {loading && !updating && <p>読み込み中...</p>}
         
-        {!loading && !updating && Array.isArray(items) && items.length === 0 ? (
+        {!loading && !updating && Array.isArray(displayItems) && displayItems.length === 0 ? (
           <p>登録されている本はありません。</p>
         ) : (
           <ul className="items-list">
-            {Array.isArray(items) && items.map((item) => (
+            {Array.isArray(displayItems) && displayItems.map((item) => (
               <li 
                 key={item.id} 
                 className={`item-card ${item.has_sale ? 'item-sale' : ''} ${updating ? 'disabled' : ''}`}
