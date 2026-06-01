@@ -195,38 +195,77 @@ def update_item(table, items) -> bool:
         except Exception as e:
             logger.error(f"Failed to update item {item['id']}: {str(e)}")
 
+def parse_price(text):
+    """テキストから価格（円）を抽出する（例: "￥653" -> 653）"""
+    if not text:
+        return None
+    price_match = re.search(r'￥\s*([0-9,]+)', text)
+    return int(price_match.group(1).replace(',', '')) if price_match else None
+
+def parse_points(text):
+    """テキストからポイント数を抽出する（例: "(7pt)" -> 7）"""
+    if not text:
+        return 0
+    point_match = re.search(r'([0-9,]+)\s*pt', text)
+    return int(point_match.group(1).replace(',', '')) if point_match else 0
+
+def extract_price_and_points(soup):
+    """
+    Amazonページから現在価格とポイント還元数を取得する。
+    Kindle Unlimited対象本は表示価格が「￥0」になるため、
+    「または￥XXX (Xpt)で購入」に記載された実際の購入価格を取得する。
+    戻り値: (current_price, point_value)
+    """
+    # Kindle版のフォーマットスワッチを優先的に参照する
+    kindle_swatch = soup.select_one("#tmm-grid-swatch-KINDLE")
+
+    if kindle_swatch:
+        slot_price_elem = kindle_swatch.select_one(".slot-price")
+        slot_price = parse_price(slot_price_elem.text) if slot_price_elem else None
+
+        # Kindle Unlimited対象（￥0表示）かどうかを判定
+        is_kindle_unlimited = kindle_swatch.select_one(".a-icon-kindle-unlimited") is not None
+
+        if is_kindle_unlimited or slot_price == 0:
+            # 「または￥XXX (Xpt)で購入」から実際の購入価格・ポイントを取得
+            extra_elem = kindle_swatch.select_one(".kindleExtraMessage")
+            if extra_elem:
+                purchase_price = parse_price(extra_elem.text)
+                purchase_points = parse_points(extra_elem.text)
+                if purchase_price is not None:
+                    return purchase_price, purchase_points
+
+        # 通常表示の価格が取得できた場合はそれを使う
+        if slot_price is not None and slot_price > 0:
+            points_elem = kindle_swatch.select_one(".slot-buyingPoints")
+            point_value = parse_points(points_elem.text) if points_elem else 0
+            return slot_price, point_value
+
+    # フォールバック: 従来のセレクタで取得
+    current_price_elem = soup.select_one(".kindle-price .a-color-price")
+    if not current_price_elem:
+        current_price_elem = soup.select_one(".a-color-price")
+    current_price = parse_price(current_price_elem.text) if current_price_elem else None
+
+    point_elem = soup.select_one(".slot-buyingPoints")
+    point_value = parse_points(point_elem.text) if point_elem else 0
+
+    return current_price, point_value
+
 def get_kindle_info(item):
     """Amazonページから本の情報を取得する"""
     try:
         response = requests.get(item, headers=HEADERS)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
-        
+
         # 書籍タイトルを取得
         title = soup.select_one("#productTitle")
         title = title.text.strip() if title else "タイトル不明"
-        
-        # 現在の価格を取得
-        current_price_elem = soup.select_one(".kindle-price .a-color-price")
-        if not current_price_elem:
-            current_price_elem = soup.select_one(".a-color-price")
-        
-        # 価格の数値部分を抽出
-        if current_price_elem:
-            price_text = current_price_elem.text.strip()
-            price_match = re.search(r'￥\s*([0-9,]+)', price_text)
-            current_price = int(price_match.group(1).replace(',', '')) if price_match else None
-        else:
-            current_price = None
-            
-        # ポイント還元の情報を取得
-        point_elem = soup.select_one(".slot-buyingPoints")
-        point_value = 0
-        if point_elem:
-            point_match = re.search(r'(\d+)', str(point_elem))
-            if point_match:
-                point_value = int(point_match.group(1))
-        
+
+        # 価格とポイント還元情報を取得（Kindle Unlimited対応）
+        current_price, point_value = extract_price_and_points(soup)
+
         return {
             "title": title,
             "current_price": current_price,
