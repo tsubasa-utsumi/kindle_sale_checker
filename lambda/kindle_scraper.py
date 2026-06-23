@@ -678,12 +678,25 @@ def next_schedule(context):
     except Exception as e:
         logger.error(f"既存ルール削除中にエラーが発生しました: {e}")
     
-    # 次回実行時間をランダムに決定（600分～840分後）
-    minutes_delay = random.randint(600, 840)
-    # minutes_delay = random.randint(1, 2)  # テスト用（本番ではコメントアウト）
-    next_run_time = datetime.now() + timedelta(minutes=minutes_delay)
-    
-    # cron式のための時間情報を取得
+    # 次回実行時間を決定（JST基準で 0時台 / 12時台 を交互に割り当てる）
+    # Hourは0または12に固定し、Minuteはランダム、Second/Microsecondは0にする
+    # ※Lambda上の datetime.now() はUTCなので +9時間してJSTに変換する
+    JST_OFFSET = timedelta(hours=9)
+    now_jst = datetime.now() + JST_OFFSET
+    if now_jst.hour < 12:
+        # 午前(JST)に実行 → 次は同日JSTの12時台
+        next_slot_jst = now_jst.replace(hour=12, minute=0, second=0, microsecond=0)
+    else:
+        # 午後(JST)に実行 → 次は翌日JSTの0時台
+        next_slot_jst = (now_jst + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # MinuteのみランダムにしてJST基準の次回実行時刻を確定（Second/Microsecondは0）
+    next_run_jst = next_slot_jst.replace(minute=random.randint(0, 59))
+
+    # EventBridgeのcronはUTC基準なのでUTCに戻す
+    next_run_time = next_run_jst - JST_OFFSET
+
+    # cron式のための時間情報を取得（EventBridgeのcronはminute単位／UTC）
     hour = next_run_time.hour
     minute = next_run_time.minute
     day = next_run_time.day
@@ -724,7 +737,7 @@ def next_schedule(context):
         SourceArn=response['RuleArn']
     )
     
-    logger.info(f"前回のルールを削除し、次回実行は {minutes_delay} 分後 ({next_run_time}) にスケジュールされました")
+    logger.info(f"前回のルールを削除し、次回実行は JST {next_run_jst} (UTC {next_run_time}) にスケジュールされました")
 
 def lambda_handler(event, context):
     """Lambda用ハンドラー関数"""
